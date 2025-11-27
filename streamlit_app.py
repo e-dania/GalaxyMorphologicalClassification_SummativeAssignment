@@ -1,152 +1,100 @@
+# streamlit_app.py
 import streamlit as st
-import os
-import shutil
-from PIL import Image
-import numpy as np
-import tensorflow as tf
+import requests
 import pandas as pd
-from datetime import datetime
-import matplotlib.pyplot as plt
-import seaborn as sns
+import numpy as np
+from PIL import Image
+import io
+import time
 
-# ------------------ Configuration ------------------
-MODEL_PATH = "models/galaxy_mobilenet.h5"
-NEW_DATA_DIR = "data/new"
-RAW_DATA_DIR = "data/raw/images_train"  # For visualization
-IMG_SIZE = (224, 224)
-CLASS_COLUMNS = ["class_0", "class_1", "class_2"]
-
-# ------------------ Page Setup ------------------
+# ------------------ Page Config ------------------
 st.set_page_config(page_title="Galaxy Morphology Dashboard", layout="wide")
-st.title("🌌 Galaxy Morphology Classification Dashboard")
 
-# ------------------ Load Model ------------------
-@st.cache_resource
-def load_model():
-    model = tf.keras.models.load_model(MODEL_PATH)
-    return model
+# ------------------ Sidebar ------------------
+st.sidebar.title("Galaxy Morphology Control Panel")
+app_mode = st.sidebar.radio(
+    "Choose Action",
+    ["Check Model Uptime", "Visualize Data", "Predict Galaxy", "Retrain Model", "Upload New Data"]
+)
 
-try:
-    model = load_model()
-    model_status = "✅ Model Loaded"
-except:
-    model = None
-    model_status = "❌ Model Not Available"
+API_URL = "https://galaxymorphologicalclassification.onrender.com"
 
-# ------------------ Utility Functions ------------------
-def preprocess_image(image):
-    img = image.convert("RGB").resize(IMG_SIZE)
-    img_array = np.array(img) / 255.0
-    return np.expand_dims(img_array, axis=0)
+# ------------------ Helper Functions ------------------
+def check_model_uptime():
+    try:
+        resp = requests.get(f"{API_URL}/predict")
+        return True
+    except:
+        return False
+
+def visualize_predictions(csv_path="data/processed/predictions_random_subset.csv"):
+    try:
+        df = pd.read_csv(csv_path)
+        st.write("Sample Predictions")
+        st.dataframe(df.head(10))
+
+        st.write("Class Distribution")
+        st.bar_chart(df[df.columns[1:]].mean())
+    except FileNotFoundError:
+        st.warning("Prediction CSV not found. Run predictions first.")
+
+def predict_image(uploaded_file):
+    if uploaded_file is not None:
+        files = {"file": (uploaded_file.name, uploaded_file, "image/jpeg")}
+        response = requests.post(f"{API_URL}/predict", files=files)
+        if response.status_code == 200:
+            st.success("Prediction Complete")
+            st.json(response.json())
+        else:
+            st.error(f"Prediction failed: {response.text}")
 
 def retrain_model():
-    from tensorflow.keras.preprocessing.image import ImageDataGenerator
-    from tensorflow.keras.models import Model
-    from tensorflow.keras.layers import Dense, Dropout, GlobalAveragePooling2D
-    from tensorflow.keras.applications import MobileNetV2
-    from tensorflow.keras.optimizers import Adam
+    response = requests.post(f"{API_URL}/retrain")
+    if response.status_code == 200:
+        st.success(response.json()["message"])
+    else:
+        st.error(f"Retraining failed: {response.text}")
 
-    if not os.path.exists(NEW_DATA_DIR):
-        st.warning("No new data for retraining.")
-        return "Retraining skipped."
-
-    datagen = ImageDataGenerator(rescale=1./255, validation_split=0.1)
-    train_gen = datagen.flow_from_directory(
-        NEW_DATA_DIR,
-        target_size=IMG_SIZE,
-        batch_size=32,
-        class_mode='categorical',
-        subset='training',
-        shuffle=True
-    )
-    val_gen = datagen.flow_from_directory(
-        NEW_DATA_DIR,
-        target_size=IMG_SIZE,
-        batch_size=32,
-        class_mode='categorical',
-        subset='validation',
-        shuffle=True
-    )
-
-    base_model = MobileNetV2(weights="imagenet", include_top=False, input_shape=(224,224,3))
-    x = GlobalAveragePooling2D()(base_model.output)
-    x = Dense(128, activation='relu')(x)
-    x = Dropout(0.2)(x)
-    outputs = Dense(len(CLASS_COLUMNS), activation='softmax')(x)
-    retrain_model = Model(inputs=base_model.input, outputs=outputs)
-
-    for layer in base_model.layers:
-        layer.trainable = False
-
-    retrain_model.compile(optimizer=Adam(1e-4), loss='categorical_crossentropy', metrics=['accuracy'])
-    retrain_model.fit(train_gen, validation_data=val_gen, epochs=3)
-    retrain_model.save(MODEL_PATH)
-    global model
-    model = tf.keras.models.load_model(MODEL_PATH)
-    return "✅ Model retrained successfully!"
-
-def visualize_data():
-    # Visualize number of images per class
-    class_counts = {}
-    for cls in CLASS_COLUMNS:
-        cls_dir = os.path.join(RAW_DATA_DIR, cls)
-        if os.path.exists(cls_dir):
-            class_counts[cls] = len(os.listdir(cls_dir))
+def upload_new_data(uploaded_file, class_name):
+    if uploaded_file is not None:
+        files = {"file": (uploaded_file.name, uploaded_file, "image/jpeg")}
+        response = requests.post(f"{API_URL}/upload_new_data", files=files, data={"class_name": class_name})
+        if response.status_code == 200:
+            st.success(response.json()["message"])
         else:
-            class_counts[cls] = 0
-    df = pd.DataFrame(list(class_counts.items()), columns=["Class", "Count"])
+            st.error(f"Upload failed: {response.text}")
 
-    st.subheader("📊 Dataset Class Distribution")
-    fig, ax = plt.subplots()
-    sns.barplot(data=df, x="Class", y="Count", palette="viridis", ax=ax)
-    st.pyplot(fig)
+# ------------------ App Modes ------------------
+if app_mode == "Check Model Uptime":
+    st.header("Model Uptime")
+    st.write("Checking if the model API is live...")
+    status = check_model_uptime()
+    if status:
+        st.success("✅ Model API is up and running!")
+    else:
+        st.error("❌ Model API is not reachable.")
 
-    # Sample images
-    st.subheader("🖼 Sample Images")
-    cols = st.columns(len(CLASS_COLUMNS))
-    for i, cls in enumerate(CLASS_COLUMNS):
-        cls_dir = os.path.join(RAW_DATA_DIR, cls)
-        if os.path.exists(cls_dir) and len(os.listdir(cls_dir)) > 0:
-            sample_img = Image.open(os.path.join(cls_dir, os.listdir(cls_dir)[0]))
-            cols[i].image(sample_img, caption=cls, use_column_width=True)
+elif app_mode == "Visualize Data":
+    st.header("Data Visualization")
+    st.write("Visualizing predictions from a CSV file")
+    visualize_predictions()
 
-# ------------------ Tabs ------------------
-tab1, tab2, tab3 = st.tabs(["Model Uptime", "Data Visualizations", "Train / Retrain"])
+elif app_mode == "Predict Galaxy":
+    st.header("Predict a Galaxy Morphology")
+    uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
+    if st.button("Predict"):
+        predict_image(uploaded_file)
 
-# ---- Model Uptime ----
-with tab1:
-    st.subheader("⚡ Model Status")
-    st.write(model_status)
-    if model is not None:
-        st.write(f"Model last loaded at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    st.write("Upload an image for prediction:")
-    uploaded_file = st.file_uploader("", type=["png","jpg","jpeg"])
-    if uploaded_file and st.button("Predict"):
-        image = Image.open(uploaded_file)
-        img_array = preprocess_image(image)
-        preds = model.predict(img_array)
-        st.subheader("Prediction Probabilities:")
-        for i, cls in enumerate(CLASS_COLUMNS):
-            st.write(f"{cls}: {preds[0][i]:.3f}")
+elif app_mode == "Retrain Model":
+    st.header("Retrain the Model")
+    st.write("Click the button to retrain the model with new data")
+    if st.button("Retrain Now"):
+        with st.spinner("Retraining model..."):
+            retrain_model()
 
-# ---- Data Visualizations ----
-with tab2:
-    visualize_data()
-
-# ---- Train / Retrain ----
-with tab3:
-    st.subheader("Upload New Training Data")
-    new_file = st.file_uploader("Upload image", type=["png","jpg","jpeg"])
-    class_name = st.selectbox("Select class", CLASS_COLUMNS)
-    if new_file and st.button("Upload"):
-        class_dir = os.path.join(NEW_DATA_DIR, class_name)
-        os.makedirs(class_dir, exist_ok=True)
-        file_path = os.path.join(class_dir, new_file.name)
-        with open(file_path, "wb") as f:
-            shutil.copyfileobj(new_file, f)
-        st.success(f"File {new_file.name} uploaded to {class_name}")
-
-    st.subheader("Retrain Model")
-    if st.button("Retrain"):
-        status = retrain_model()
-        st.success(status)
+elif app_mode == "Upload New Data":
+    st.header("Upload New Data for Retraining")
+    class_name = st.selectbox("Select Class", ["class_0", "class_1", "class_2"])
+    uploaded_file = st.file_uploader("Upload an image for new data", type=["jpg", "jpeg", "png"])
+    if st.button("Upload"):
+        upload_new_data(uploaded_file, class_name)
