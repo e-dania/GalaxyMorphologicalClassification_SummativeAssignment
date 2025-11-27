@@ -87,3 +87,10 @@ locust -f locustfile.py
 * Open [http://localhost:8089](http://localhost:8089) to start load testing.
 
 ---
+## Locus Stress Test
+
+<img width="1664" height="417" alt="image" src="https://github.com/user-attachments/assets/fc7018b5-3e18-4813-aa36-b79bca0b06ba" />
+
+
+
+---
