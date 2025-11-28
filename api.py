@@ -33,34 +33,61 @@ async def upload_new_data(
     files: List[UploadFile] = File(...),
     class_name: str = "class_0"
 ):
+    # Validate class
     if class_name not in CLASS_COLUMNS:
-        raise HTTPException(status_code=400, detail="Invalid class name")
+        raise HTTPException(status_code=400, detail="Invalid class name.")
 
+    # Path for this class
     class_dir = os.path.join(NEW_DATA_DIR, class_name)
     os.makedirs(class_dir, exist_ok=True)
 
-    saved = 0
+    uploaded_files = []
 
-    for file in files:
-        if not file.filename.lower().endswith((".jpg", ".jpeg", ".png")):
+    # Loop through files (works for 1 or many)
+    for f in files:
+        if not f.filename.lower().endswith(('.png', '.jpg', '.jpeg')):
             continue
 
-        save_path = os.path.join(class_dir, file.filename)
+        save_path = os.path.join(class_dir, f.filename)
 
-        with open(save_path, "wb") as f:
-            shutil.copyfileobj(file.file, f)
+        # Avoid overwriting files
+        if os.path.exists(save_path):
+            base, ext = os.path.splitext(f.filename)
+            save_path = os.path.join(class_dir, f"{base}_copy{ext}")
 
-        saved += 1
+        # Save file
+        with open(save_path, "wb") as buffer:
+            shutil.copyfileobj(f.file, buffer)
 
-    return {"message": f"Uploaded {saved} files to {class_name}"}
+        uploaded_files.append(f.filename)
+
+    if len(uploaded_files) == 0:
+        raise HTTPException(status_code=400, detail="No valid images uploaded.")
+
+    return {
+        "message": f"Uploaded {len(uploaded_files)} file(s) to {class_name}.",
+        "files": uploaded_files
+    }
+
 
 @app.post("/retrain")
 async def retrain():
+    import tensorflow as tf
     from tensorflow.keras.preprocessing.image import ImageDataGenerator
     from tensorflow.keras.models import Model
     from tensorflow.keras.layers import Dense, Dropout, GlobalAveragePooling2D
     from tensorflow.keras.applications import MobileNetV2
     from tensorflow.keras.optimizers import Adam
+
+    class ProgressCallback(tf.keras.callbacks.Callback):
+        def on_epoch_end(self, epoch, logs=None):
+            progress = {
+                "epoch": epoch + 1,
+                "accuracy": float(logs.get("accuracy", 0)),
+                "val_accuracy": float(logs.get("val_accuracy", 0))
+            }
+            with open("progress.json", "w") as f:
+                json.dump(progress, f)
 
     if not os.listdir(NEW_DATA_DIR):
         raise HTTPException(status_code=400, detail="No new data uploaded.")
@@ -88,7 +115,13 @@ async def retrain():
         layer.trainable = False
 
     new_model.compile(optimizer=Adam(1e-4), loss="categorical_crossentropy", metrics=["accuracy"])
-    history = new_model.fit(train_gen, validation_data=val_gen, epochs=3)
+
+    history = new_model.fit(
+        train_gen,
+        validation_data=val_gen,
+        epochs=3,
+        callbacks=[ProgressCallback()]
+    )
 
     new_model.save(MODEL_PATH)
 
