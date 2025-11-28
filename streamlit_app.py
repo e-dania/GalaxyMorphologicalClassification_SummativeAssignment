@@ -122,20 +122,33 @@ elif menu == "Retrain":
     st.write("Click below to retrain the model. This may take some time.")
 
     if st.button("Start Retraining"):
-        progress = st.progress(0)
-        with st.spinner("⏳ Retraining model... this may take a few minutes"):
-            # Fake progress bar for UX
-            for i in range(100):
-                time.sleep(0.05)
-                progress.progress(i + 1)
+        try:
+            res = requests.post(f"{API_URL}/retrain")
+            st.success(res.json().get("message", "Retraining started!"))
+        except Exception as e:
+            st.error(f"Failed to start retraining: {e}")
 
-            try:
-                res = requests.post(f"{API_URL}/retrain", timeout=3600)
-                res_json = res.json()
-                st.success(res_json.get("message", "Retraining complete!"))
-                show_confetti()
-            except requests.exceptions.JSONDecodeError:
-                st.error("Retraining failed or timed out. Check server logs.")
-            except Exception as e:
-                st.error(f"Retraining failed: {e}")
+    # Poll progress
+    progress_bar = st.progress(0)
+    progress_text = st.empty()
 
+    while True:
+        try:
+            res = requests.get(f"{API_URL}/progress").json()
+            if "error" in res:
+                st.error(res["error"])
+                break
+            elif res.get("completed"):
+                progress_bar.progress(100)
+                progress_text.text("Retraining completed! 🎉")
+                break
+            elif "epoch" in res:
+                # For 3 epochs, map epoch number to percentage
+                percent = int((res["epoch"] / 3) * 100)
+                progress_bar.progress(percent)
+                progress_text.text(f"Epoch {res['epoch']}: val_acc={res['val_accuracy']:.4f}")
+            else:
+                progress_text.text("Retraining in progress...")
+        except Exception:
+            progress_text.text("Waiting for progress...")
+        time.sleep(5)
