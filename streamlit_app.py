@@ -122,33 +122,40 @@ elif menu == "Retrain":
     st.write("Click below to retrain the model. This may take some time.")
 
     if st.button("Start Retraining"):
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+
         try:
-            res = requests.post(f"{API_URL}/retrain")
-            st.success(res.json().get("message", "Retraining started!"))
-        except Exception as e:
+            # Start retraining (non-blocking on the server)
+            requests.post(f"{API_URL}/retrain", timeout=5)
+
+            st.success("Retraining started! 🚀")
+            status_text.text("Monitoring progress...")
+
+            # Poll the server for progress
+            while True:
+                try:
+                    res = requests.get(f"{API_URL}/progress", timeout=5)
+                    data = res.json()
+                    epoch = data.get("epoch", 0)
+                    val_acc = data.get("val_accuracy", 0.0)
+
+                    progress_percent = int((epoch / data.get("total_epochs", 3)) * 100)
+                    progress_bar.progress(progress_percent)
+                    status_text.text(
+                        f"Epoch {epoch}/{data.get('total_epochs',3)} — Validation Accuracy: {val_acc:.2%}"
+                    )
+
+                    if data.get("done", False):
+                        progress_bar.progress(100)
+                        status_text.text("Retraining complete! 🎉")
+                        st.balloons()
+                        break
+
+                except requests.exceptions.RequestException:
+                    status_text.text("Waiting for progress...")
+                
+                time.sleep(2)  # Poll every 2 seconds
+
+        except requests.exceptions.RequestException as e:
             st.error(f"Failed to start retraining: {e}")
-
-    # Poll progress
-    progress_bar = st.progress(0)
-    progress_text = st.empty()
-
-    while True:
-        try:
-            res = requests.get(f"{API_URL}/progress").json()
-            if "error" in res:
-                st.error(res["error"])
-                break
-            elif res.get("completed"):
-                progress_bar.progress(100)
-                progress_text.text("Retraining completed! 🎉")
-                break
-            elif "epoch" in res:
-                # For 3 epochs, map epoch number to percentage
-                percent = int((res["epoch"] / 3) * 100)
-                progress_bar.progress(percent)
-                progress_text.text(f"Epoch {res['epoch']}: val_acc={res['val_accuracy']:.4f}")
-            else:
-                progress_text.text("Retraining in progress...")
-        except Exception:
-            progress_text.text("Waiting for progress...")
-        time.sleep(5)
