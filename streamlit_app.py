@@ -1,13 +1,14 @@
+# streamlit_app.py
 import streamlit as st
 import requests
 import pandas as pd
 from PIL import Image
 import time
-import base64
+import json
 
 API_URL = "https://galaxymorphologicalclassification.onrender.com"
 
-st.set_page_config(page_title="Galaxy Dashboard", layout="wide")
+st.set_page_config(page_title="Galaxy Morphology Dashboard", layout="wide")
 
 # -------------------- SIDEBAR MENU -----------------------
 menu = st.sidebar.radio(
@@ -39,9 +40,9 @@ if menu == "Uptime":
     st.title("Model Uptime")
     try:
         requests.get(f"{API_URL}/predict")
-        st.success("API is live!")
+        st.success("✅ API is live!")
     except:
-        st.error("API is offline.")
+        st.error("❌ API is offline.")
 
 # --------------------- VISUALIZE -------------------------
 elif menu == "Visualize Data":
@@ -51,12 +52,11 @@ elif menu == "Visualize Data":
         st.dataframe(df.head())
         st.bar_chart(df[df.columns[1:]].mean())
     except:
-        st.warning("CSV not found.")
+        st.warning("CSV not found. Run predictions first.")
 
 # --------------------- PREDICT ---------------------------
 elif menu == "Predict":
     st.subheader("🔭 Galaxy Classification")
-
     img = st.file_uploader("Upload galaxy image", type=["jpg", "png", "jpeg"])
 
     # ---------- IMAGE PREVIEW ----------
@@ -65,21 +65,23 @@ elif menu == "Predict":
         st.image(img, use_column_width=True, caption="Uploaded Image")
 
     # ---------- PREDICT BUTTON ----------
-    if st.button("Run Prediction", use_container_width=True):
+    if st.button("Run Prediction"):
         if img:
             with st.spinner("🔄 Sending image to model… please wait"):
-                files = {"file": (img.name, img, "image/jpeg")}
-                res = requests.post(f"{API_URL}/predict", files=files)
-                time.sleep(1)
+                try:
+                    files = {"file": (img.name, img, "image/jpeg")}
+                    res = requests.post(f"{API_URL}/predict", files=files)
+                    res_json = res.json()
+                except Exception as e:
+                    st.error(f"Prediction failed: {e}")
+                    res_json = None
 
-            # Fade-in animation
-            st.markdown('<div class="fade-in">', unsafe_allow_html=True)
-            st.success("Prediction Complete! 🎉")
-            st.json(res.json())
-            st.markdown('</div>', unsafe_allow_html=True)
-
-            show_confetti()
-
+            if res_json:
+                st.markdown('<div class="fade-in">', unsafe_allow_html=True)
+                st.success("Prediction Complete! 🎉")
+                st.json(res_json)
+                st.markdown('</div>', unsafe_allow_html=True)
+                show_confetti()
         else:
             st.error("Please upload an image first.")
 
@@ -94,10 +96,16 @@ elif menu == "Upload Data":
     if st.button("Upload Images"):
         if imgs:
             files_list = [("files", (img.name, img.getvalue(), "image/jpeg")) for img in imgs]
-            res = requests.post(
-                f"{API_URL}/upload_new_data", files=files_list, data={"class_name": class_name}
-            )
-            st.success(res.json()["message"])
+            try:
+                res = requests.post(
+                    f"{API_URL}/upload_new_data",
+                    files=files_list,
+                    data={"class_name": class_name},
+                )
+                res_json = res.json()
+                st.success(res_json.get("message", "Upload complete!"))
+            except Exception as e:
+                st.error(f"Upload failed: {e}")
         else:
             st.error("No files uploaded.")
 
@@ -106,15 +114,18 @@ elif menu == "Retrain":
     st.title("Retrain Model")
     st.write("Click below to retrain the model. This may take some time.")
 
-    if st.button("Start Retraining", use_container_width=True):
+    if st.button("Start Retraining"):
+        progress = st.progress(0)
         with st.spinner("⏳ Retraining model... this may take a few minutes"):
-            # Fake progress bar for UX (does not reflect actual API progress)
-            progress = st.progress(0)
+            # Fake progress bar for UX
             for i in range(100):
                 time.sleep(0.05)
                 progress.progress(i + 1)
 
-            res = requests.post(f"{API_URL}/retrain")
-
-        st.success(res.json()["message"])
-        show_confetti()
+            try:
+                res = requests.post(f"{API_URL}/retrain")
+                res_json = res.json()
+                st.success(res_json.get("message", "Retraining complete!"))
+                show_confetti()
+            except Exception as e:
+                st.error(f"Retraining failed: {e}")
