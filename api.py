@@ -5,6 +5,7 @@ from PIL import Image
 import numpy as np
 import tensorflow as tf
 import os, shutil
+import json 
 
 MODEL_PATH = "models/galaxy_mobilenet.h5"
 NEW_DATA_DIR = "data/new"
@@ -79,15 +80,15 @@ async def retrain():
     from tensorflow.keras.applications import MobileNetV2
     from tensorflow.keras.optimizers import Adam
 
-    class ProgressCallback(tf.keras.callbacks.Callback):
-        def on_epoch_end(self, epoch, logs=None):
-            progress = {
-                "epoch": epoch + 1,
-                "accuracy": float(logs.get("accuracy", 0)),
-                "val_accuracy": float(logs.get("val_accuracy", 0))
-            }
-            with open("progress.json", "w") as f:
-                json.dump(progress, f)
+    # class ProgressCallback(tf.keras.callbacks.Callback):
+    #     def on_epoch_end(self, epoch, logs=None):
+    #         progress = {
+    #             "epoch": epoch + 1,
+    #             "accuracy": float(logs.get("accuracy", 0)),
+    #             "val_accuracy": float(logs.get("val_accuracy", 0))
+    #         }
+    #         with open("progress.json", "w") as f:
+    #             json.dump(progress, f)
 
     if not os.listdir(NEW_DATA_DIR):
         raise HTTPException(status_code=400, detail="No new data uploaded.")
@@ -120,7 +121,7 @@ async def retrain():
         train_gen,
         validation_data=val_gen,
         epochs=3,
-        callbacks=[ProgressCallback()]
+        # callbacks=[ProgressCallback()]
     )
 
     new_model.save(MODEL_PATH)
@@ -132,3 +133,4 @@ async def retrain():
     os.makedirs(NEW_DATA_DIR, exist_ok=True)
 
     return {"message": "Retraining complete"}
+
