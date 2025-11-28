@@ -1,23 +1,49 @@
 import streamlit as st
 import requests
 import pandas as pd
+from PIL import Image
+import time
+import base64
 
 API_URL = "https://galaxymorphologicalclassification.onrender.com"
 
 st.set_page_config(page_title="Galaxy Dashboard", layout="wide")
 
-menu = st.sidebar.radio("Select", ["Uptime", "Visualize Data", "Predict", "Upload Data", "Retrain"])
+# -------------------- SIDEBAR MENU -----------------------
+menu = st.sidebar.radio(
+    "Select",
+    ["Uptime", "Visualize Data", "Predict", "Upload Data", "Retrain"],
+)
 
-# -------------------- UPTIME -----------------------
+# -------------------- CSS FOR ANIMATIONS -----------------
+st.markdown(
+    """
+<style>
+@keyframes fadeIn {
+  from {opacity: 0;} to {opacity: 1;}
+}
+.fade-in {
+  animation: fadeIn 1s ease-in-out;
+}
+</style>
+""",
+    unsafe_allow_html=True,
+)
+
+# -------------------- CONFETTI ---------------------------
+def show_confetti():
+    st.snow()
+
+# -------------------- UPTIME -----------------------------
 if menu == "Uptime":
     st.title("Model Uptime")
     try:
-        r = requests.get(f"{API_URL}/predict")
+        requests.get(f"{API_URL}/predict")
         st.success("API is live!")
     except:
         st.error("API is offline.")
 
-# --------------------- VISUALIZE --------------------
+# --------------------- VISUALIZE -------------------------
 elif menu == "Visualize Data":
     st.title("Sample Predictions")
     try:
@@ -27,46 +53,68 @@ elif menu == "Visualize Data":
     except:
         st.warning("CSV not found.")
 
-# --------------------- PREDICT ----------------------
+# --------------------- PREDICT ---------------------------
 elif menu == "Predict":
-    st.title("Predict Galaxy Class")
-    img = st.file_uploader("Upload galaxy image", type=["jpg","png","jpeg"])
+    st.subheader("🔭 Galaxy Classification")
 
-    if st.button("Predict"):
+    img = st.file_uploader("Upload galaxy image", type=["jpg", "png", "jpeg"])
+
+    # ---------- IMAGE PREVIEW ----------
+    if img:
+        st.markdown("### 🖼 Preview")
+        st.image(img, use_column_width=True, caption="Uploaded Image")
+
+    # ---------- PREDICT BUTTON ----------
+    if st.button("Run Prediction", use_container_width=True):
         if img:
-            files = {"file": (img.name, img, "image/jpeg")}
-            res = requests.post(f"{API_URL}/predict", files=files)
-            st.json(res.json())
-        else:
-            st.error("No image selected.")
+            with st.spinner("🔄 Sending image to model… please wait"):
+                files = {"file": (img.name, img, "image/jpeg")}
+                res = requests.post(f"{API_URL}/predict", files=files)
+                time.sleep(1)
 
-# ------------------ UPLOAD NEW DATA -----------------
+            # Fade-in animation
+            st.markdown('<div class="fade-in">', unsafe_allow_html=True)
+            st.success("Prediction Complete! 🎉")
+            st.json(res.json())
+            st.markdown('</div>', unsafe_allow_html=True)
+
+            show_confetti()
+
+        else:
+            st.error("Please upload an image first.")
+
+# ------------------ UPLOAD NEW DATA ----------------------
 elif menu == "Upload Data":
     st.title("Upload New Training Data")
-    class_name = st.selectbox("Select Class", ["class_0","class_1","class_2"])
-    imgs = st.file_uploader("Upload multiple images", type=["jpg","jpeg","png"], accept_multiple_files=True)
+    class_name = st.selectbox("Select Class", ["class_0", "class_1", "class_2"])
+    imgs = st.file_uploader(
+        "Upload multiple images", type=["jpg", "jpeg", "png"], accept_multiple_files=True
+    )
 
     if st.button("Upload Images"):
         if imgs:
-            files_list = []
-            for img in imgs:
-                files_list.append(("files", (img.name, img.getvalue(), "image/jpeg")))
-
+            files_list = [("files", (img.name, img.getvalue(), "image/jpeg")) for img in imgs]
             res = requests.post(
-                f"{API_URL}/upload_new_data",
-                files=files_list,
-                data={"class_name": class_name}
+                f"{API_URL}/upload_new_data", files=files_list, data={"class_name": class_name}
             )
-
             st.success(res.json()["message"])
         else:
             st.error("No files uploaded.")
 
-# --------------------- RETRAIN ----------------------
+# --------------------- RETRAIN MODEL ---------------------
 elif menu == "Retrain":
     st.title("Retrain Model")
+    st.write("Click below to retrain the model. This may take some time.")
 
-    if st.button("Start Retraining"):
-        st.info("Retraining... This may take a while.")
-        res = requests.post(f"{API_URL}/retrain")
+    if st.button("Start Retraining", use_container_width=True):
+        with st.spinner("⏳ Retraining model... this may take a few minutes"):
+            # Fake progress bar for UX (does not reflect actual API progress)
+            progress = st.progress(0)
+            for i in range(100):
+                time.sleep(0.05)
+                progress.progress(i + 1)
+
+            res = requests.post(f"{API_URL}/retrain")
+
         st.success(res.json()["message"])
+        show_confetti()
