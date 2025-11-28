@@ -95,15 +95,22 @@ elif menu == "Upload Data":
 
     if st.button("Upload Images"):
         if imgs:
-            files_list = [("files", (img.name, img.getvalue(), "image/jpeg")) for img in imgs]
+            multipart_files = [
+                ("files", (img.name, img.getvalue(), "image/jpeg")) for img in imgs
+            ]
+            payload = {"class_name": class_name}
+            st.markdown("### 🖼 Previews")
+            for img in imgs:
+                st.image(img, use_column_width=False, width=150)
+
             try:
                 res = requests.post(
-                    f"{API_URL}/upload_new_data",
-                    files=files_list,
-                    data={"class_name": class_name},
+                    f"{API_URL}/upload_new_data", files=multipart_files, data=payload
                 )
                 res_json = res.json()
                 st.success(res_json.get("message", "Upload complete!"))
+            except requests.exceptions.JSONDecodeError:
+                st.error("Upload failed: Could not decode server response.")
             except Exception as e:
                 st.error(f"Upload failed: {e}")
         else:
@@ -123,9 +130,12 @@ elif menu == "Retrain":
                 progress.progress(i + 1)
 
             try:
-                res = requests.post(f"{API_URL}/retrain")
+                res = requests.post(f"{API_URL}/retrain", timeout=3600)
                 res_json = res.json()
                 st.success(res_json.get("message", "Retraining complete!"))
                 show_confetti()
+            except requests.exceptions.JSONDecodeError:
+                st.error("Retraining failed or timed out. Check server logs.")
             except Exception as e:
                 st.error(f"Retraining failed: {e}")
+
