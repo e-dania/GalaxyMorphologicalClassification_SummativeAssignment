@@ -29,8 +29,6 @@ async def predict(file: UploadFile = File(...)):
     preds = model.predict(img)
     return {CLASS_COLUMNS[i]: float(preds[0][i]) for i in range(len(CLASS_COLUMNS))}
 
-Change your endpoint to explicitly accept class_name from the form data:
-
 from fastapi import Form
 
 @app.post("/upload_new_data")
@@ -133,5 +131,6 @@ async def retrain():
     os.makedirs(NEW_DATA_DIR, exist_ok=True)
 
     return {"message": "Retraining complete"}
+
 
 
