@@ -29,10 +29,14 @@ async def predict(file: UploadFile = File(...)):
     preds = model.predict(img)
     return {CLASS_COLUMNS[i]: float(preds[0][i]) for i in range(len(CLASS_COLUMNS))}
 
+Change your endpoint to explicitly accept class_name from the form data:
+
+from fastapi import Form
+
 @app.post("/upload_new_data")
 async def upload_new_data(
     files: List[UploadFile] = File(...),
-    class_name: str = "class_0"
+    class_name: str = Form(...)
 ):
     # Validate class
     if class_name not in CLASS_COLUMNS:
@@ -44,19 +48,16 @@ async def upload_new_data(
 
     uploaded_files = []
 
-    # Loop through files (works for 1 or many)
     for f in files:
         if not f.filename.lower().endswith(('.png', '.jpg', '.jpeg')):
             continue
 
         save_path = os.path.join(class_dir, f.filename)
 
-        # Avoid overwriting files
         if os.path.exists(save_path):
             base, ext = os.path.splitext(f.filename)
             save_path = os.path.join(class_dir, f"{base}_copy{ext}")
 
-        # Save file
         with open(save_path, "wb") as buffer:
             shutil.copyfileobj(f.file, buffer)
 
@@ -69,7 +70,6 @@ async def upload_new_data(
         "message": f"Uploaded {len(uploaded_files)} file(s) to {class_name}.",
         "files": uploaded_files
     }
-
 
 @app.post("/retrain")
 async def retrain():
@@ -133,4 +133,5 @@ async def retrain():
     os.makedirs(NEW_DATA_DIR, exist_ok=True)
 
     return {"message": "Retraining complete"}
+
 
