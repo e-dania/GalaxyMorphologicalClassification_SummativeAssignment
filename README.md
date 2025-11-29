@@ -2,7 +2,7 @@
 
 ## **Quick Start**
 
-* **Watch Demo Video:** [YouTube Demo](https://youtu.be/your-video-link)
+* **Watch Demo Video:** [YouTube Demo](https://youtu.be/3oB14dPnbqE)
 * **Streamlit UI Dashboard:** [Open Dashboard](https://galaxymorphologicalclassificationsummativeassignment.streamlit.app/)
 * **API Endpoint (Render Deployment):** [API Link](https://galaxymorphologicalclassification.onrender.com/)
 
