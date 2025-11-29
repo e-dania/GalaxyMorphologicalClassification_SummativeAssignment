@@ -39,7 +39,7 @@ def show_confetti():
 if menu == "Uptime":
     st.title("Model Uptime")
     try:
-        requests.get(f"{API_URL}/predict")
+        requests.get(f"{API_URL}/progress")
         st.success("✅ API is live!")
     except:
         st.error("❌ API is offline.")
@@ -159,3 +159,4 @@ elif menu == "Retrain":
 
         except requests.exceptions.RequestException as e:
             st.error(f"Failed to start retraining: {e}")
+
